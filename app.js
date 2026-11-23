@@ -208,6 +208,7 @@ const liveClock = document.querySelector("#liveClock");
 let originCoordinates = null;
 let nextStopEstimateMinutes = null;
 let destinationMemories = new Map();
+const pendingMemoryUploads = new Map();
 let photoObjectUrls = new Map();
 let photoStorageError = null;
 let photoDatabase = null;
@@ -969,6 +970,16 @@ function renderMemorySlots(destination) {
   const canEdit = canEditTrip();
   const photoCount = photos.filter(Boolean).length;
   const slots = Array.from({ length: maxMemoryPhotos }, (_, photoIndex) => {
+    const pendingPhoto = pendingMemoryUploads.get(`${destination.id}:${photoIndex}`);
+    if (pendingPhoto) {
+      return `
+        <div class="memory-slot has-photo is-uploading">
+          <img src="${getPhotoObjectUrl(destination.id, photoIndex, pendingPhoto)}" alt="Ảnh xem trước ${photoIndex + 1} tại ${destination.name}">
+          <span class="memory-upload-progress">Đang tải…</span>
+        </div>
+      `;
+    }
+
     const photo = photos[photoIndex];
     if (photo) {
       return `
@@ -1247,6 +1258,10 @@ async function addMemoryPhoto(input) {
     return;
   }
   const photo = { blob: file, name: file.name, type: file.type };
+  const photoKey = `${destinationId}:${photoIndex}`;
+  pendingMemoryUploads.set(photoKey, photo);
+  renderDestinations();
+  setMemoryStatus(destinationId, "Đang xem trước và lưu ảnh…");
   let localCacheError = false;
 
   try {
@@ -1265,6 +1280,7 @@ async function addMemoryPhoto(input) {
       photos[photoIndex] = photo;
       await saveDestinationMemories(destinationId, photos);
     }
+    pendingMemoryUploads.delete(photoKey);
     destinationMemories.set(destinationId, photos);
     renderDestinations();
     setMemoryStatus(destinationId, tripCloud.configured
@@ -1274,9 +1290,16 @@ async function addMemoryPhoto(input) {
       : "Đã lưu ảnh kỷ niệm trên thiết bị này.");
   } catch (error) {
     console.error("Could not save the memory photo.", error);
-    setMemoryStatus(destinationId, tripCloud.configured
+    pendingMemoryUploads.delete(photoKey);
+    const previewUrl = photoObjectUrls.get(photoKey);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      photoObjectUrls.delete(photoKey);
+    }
+    renderDestinations();
+    setMemoryStatus(destinationId, error.message || (tripCloud.configured
       ? "Không tải được ảnh lên cloud. Hãy kiểm tra kết nối và dung lượng."
-      : "Không lưu được ảnh. Hãy kiểm tra dung lượng thiết bị.");
+      : "Không lưu được ảnh. Hãy kiểm tra dung lượng thiết bị."));
     input.value = "";
   }
 }

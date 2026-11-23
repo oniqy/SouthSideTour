@@ -1135,6 +1135,21 @@ body { background: var(--paper); color: var(--ink); }
   object-fit: cover;
 }
 
+.memory-slot.is-uploading img {
+  opacity: .58;
+}
+
+.memory-upload-progress {
+  position: absolute;
+  inset: auto 4px 4px;
+  padding: 4px 2px;
+  border-radius: 5px;
+  background: rgba(5, 14, 23, .86);
+  color: #fff;
+  font-size: 8px;
+  text-align: center;
+}
+
 .remove-memory {
   width: 24px;
   height: 24px;

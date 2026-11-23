@@ -4,6 +4,8 @@
   const localCloudOverride = new URLSearchParams(window.location.search).has("cloud");
   const configured = Boolean(config.enabled)
     && (!localHosts.has(window.location.hostname) || localCloudOverride);
+  const maximumSourcePhotoBytes = 20 * 1024 * 1024;
+  const maximumStoredPhotoBytes = 1_200_000;
   let owner = false;
   let connected = false;
 
@@ -137,14 +139,67 @@
     await request(`expenses?id=${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
+  async function compressPhoto(blob) {
+    if (!blob || blob.size === 0 || blob.size > maximumSourcePhotoBytes) {
+      throw new Error("Ảnh gốc phải có dung lượng từ 1 byte đến 20 MB.");
+    }
+    if (typeof createImageBitmap !== "function") {
+      throw new Error("Trình duyệt này không hỗ trợ nén ảnh. Hãy dùng trình duyệt mới hơn.");
+    }
+
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(blob);
+    } catch {
+      throw new Error("Không đọc được ảnh này. Hãy chọn ảnh JPG, PNG hoặc WebP.");
+    }
+
+    try {
+      const maxDimension = 1800;
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      let width = Math.max(1, Math.round(bitmap.width * scale));
+      let height = Math.max(1, Math.round(bitmap.height * scale));
+      let quality = 0.84;
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("Không thể xử lý ảnh trong trình duyệt này.");
+
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(bitmap, 0, 0, width, height);
+        const compressed = await new Promise((resolve, reject) => {
+          canvas.toBlob((result) => {
+            if (result) resolve(result);
+            else reject(new Error("Không thể nén ảnh."));
+          }, "image/jpeg", quality);
+        });
+        if (compressed.size <= maximumStoredPhotoBytes) return compressed;
+
+        if (quality > 0.56) {
+          quality = Math.max(0.5, quality - 0.08);
+        } else {
+          width = Math.max(1, Math.floor(width * 0.85));
+          height = Math.max(1, Math.floor(height * 0.85));
+          quality = 0.82;
+        }
+      }
+      throw new Error("Ảnh vẫn quá lớn sau khi nén. Hãy chọn ảnh khác.");
+    } finally {
+      bitmap.close();
+    }
+  }
+
   async function uploadPhoto(destinationId, photoIndex, photo) {
     assertOwner();
     if (!photo || !photo.blob) throw new Error("Không tìm thấy tệp ảnh cần tải lên.");
+    const compressedPhoto = await compressPhoto(photo.blob);
 
     const form = new FormData();
     form.set("destinationId", destinationId);
     form.set("photoIndex", String(photoIndex));
-    form.set("file", photo.blob, photo.name || `memory-${photoIndex + 1}`);
+    const baseName = (photo.name || `memory-${photoIndex + 1}`).replace(/\.[^.]+$/, "");
+    form.set("file", compressedPhoto, `${baseName}.jpg`);
     return request("memories", { method: "POST", body: form });
   }
 

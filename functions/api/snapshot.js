@@ -6,7 +6,7 @@ export async function onRequestGet({ env, request }) {
       env.DB.prepare("SELECT visited_place_ids FROM trip_state WHERE id = 'main'").first(),
       env.DB.prepare("SELECT id, amount, category, timestamp FROM expenses ORDER BY timestamp DESC").all(),
       env.DB.prepare(
-        "SELECT destination_id, photo_index, object_key, file_name, content_type FROM destination_memories ORDER BY destination_id, photo_index",
+        "SELECT destination_id, photo_index, id, file_name, content_type FROM destination_memory_images ORDER BY destination_id, photo_index",
       ).all(),
       env.DB.prepare("SELECT value FROM app_meta WHERE key = 'local_data_imported'").first(),
     ]);
@@ -17,10 +17,10 @@ export async function onRequestGet({ env, request }) {
       photos: (photos.results || []).map((photo) => ({
         destination_id: photo.destination_id,
         photo_index: photo.photo_index,
-        path: photo.object_key,
+        path: photo.id,
         name: photo.file_name,
         type: photo.content_type,
-        url: `/api/memories/file?key=${encodeURIComponent(photo.object_key)}`,
+        url: `/api/memories/file?id=${encodeURIComponent(photo.id)}`,
       })),
       initialized: imported && imported.value === "1",
     });
